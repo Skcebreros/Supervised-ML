@@ -1,0 +1,261 @@
+---
+title: "Final Project"
+author: "Sandy Cebreros"
+date: "12/09/22"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**Introduction:** 
+The data set used is called “California Housing Prices”, which was downloaded from Kaggle (source #6). The dataset contains housing data from a 1990 census and has 13 predictors(Median Income, Median Age, Total Rooms, Total Bedrooms, Population, Households, Latitude, Longitude, Distance to Coast, Distance to LA, Distance to San Jose, Distance to San Francisco and Distance to San Diego) (source #3). The original data set was published in a Journal called "Sparse spatial autoregressions". There are 20,640 total data points in the set and every predictor is quantitative. Every predictor describes certain features like total number of rooms, average income, latitude and longitude, etc. The original data set contained a qualitative variable: Ocean Proximity which contained many outliers. We were able to find a clean version of the data that removed the outliers and renamed this variable: distance to coast. This clean data set allowed us to skip any pre-processing and jump straight into organizing the data since this data also had all N/A values removed. To verify that this data was clean, I used the is.na() function to verify no missing values. I split the data into 70% training and 30% test. Given the data set, the main goal we are trying to accomplish is to **predict the dependent variable: Median Home Value using supervised, regression models like Linear Regression, Polynomial Regression, Ridge Regression and Random Forests**. We also wanted to compare which variables had a significant influence in the prediction of the dependent variable. We learned about all of these models in class and fit them to our data in order to compare the accuracy of each and analyze what made certain models better or worse than others. 
+Linear Regression gave us a good idea of which variables seemed the most correlated and significant but the fit R^2 value was not in a good range (0.64) and some of the model assumptions were not satisfied. This model also confirmed that there was multi-collinearity in our data. After plotting residual vs fitted, I noticed a slight non-linearity and decided it would be a good idea to try a non-linear method like Polynomial Regression of degree 2. After analyzing the Polynomial Regression summary, this model seemed to be a better fit to the data based on the R^2 value obtained, which was 0.72. Leave-one-out cross validation was the cross validation method used to check for possible over-fitting of the data. In order to compensate for multi-collinearity, we fit a Ridge Regression model and used k-fold cross validation to select the best lambda value. This method yielded an adj R^2 value of 0.63 which was not much better than Linear Regression and the LOOCV method. However, this model did confirm Median Income as the most important predictor to predict the dependent variable. This was also confirmed by the Random Forest Regression. I used a Random Forest Regression to print out a predictor importance visual plot to analyze and determine if these predictors made sense. The RMSE value obtained was also the best for the Random Forest model, along with the R^2 value of 0.8. This model proved to be the most accurate out of all models. 
+
+   
+In order to visualize the variables, I printed out histograms to see the distribution and made a correlogram to get an idea of variable correlation. The dimension of the data set is also printed below, showing no NA values. There was no need to clean the data. 
+```{r, message=FALSE, warning=FALSE}
+df=read.csv("houses.csv") #read dataset 
+
+#summary, dimension and N/A values check.
+head(df)
+dim(df)
+sum(is.na(df)) #no N/A values. 
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+library(corrplot)
+
+#correlation between all variables 
+corr <- cor(df)
+corrplot(corr)
+```
+ 
+The correlogram above shows positive correlations in blue and negative correlations in red. This graph shows that the most significant positive correlation with Median House Value is Median Income. It also shows that the further a home is from the coast, the more negative the correlation becomes. This means that the further a home is from the coast, the Median House Value drops. This makes sense because homes tend to be more expensive the closer they are to a beach, and the higher your income, the more likely you are to own a home with more monetary value. 
+
+
+```{r, message=FALSE, warning=FALSE}
+#checking for variable distribution. Including in comments because it shows how I did this step. 
+
+
+#hist(df$Population) #not evenly distributed 
+#hist(df$Households) 
+#hist(df$Latitude) #not evenly distributed but better than above variables
+#hist(df$Longitude)#similar to latitude hist()
+#hist(df$Distance_to_coast) #Not evenly distributed 
+
+#variables that seem to be the most evenly distributed 
+
+hist(df$Median_Income, main = "Median Income Histogram", xlab = 'Median Income', ylab = 'Frequency') 
+hist(df$Median_House_Value, main = "Median House Value Histogram", xlab = 'Median House Value', ylab = 'Frequency')
+hist(df$Median_Age, main  = "Median Age Histogram", xlab = 'Median Age', ylab = 'Frequency')
+
+```
+
+  The histograms shown above are all variables that appear to be normally distributed (the rest are in the code file). Median Income is a predictor I was curious about since it was the most positively correlated predictor to the dependent variable. The histogram shows a normal distribution for Median Income and for Median Age.  
+
+**Model Analysis: Linear Regression **
+```{r, message=FALSE, warning=FALSE}
+set.seed(1)
+library(ModelMetrics)
+
+#split data into test/train 70/30
+sample <- sample(c(TRUE, FALSE), nrow(df), replace = TRUE, prob = c(0.7,0.3))
+train <- df[sample,]
+test <- df[!sample,]
+
+```
+
+
+
+```{r, message=FALSE, warning=FALSE}
+library(caret)
+library(ModelMetrics)
+library(MLmetrics)
+library(car)
+y_hat <- dummyVars("~.", data = train) #create dummy variables
+new_data <- data.frame(predict(y_hat, newdata = train)) # y hat prediction 
+preds <- predict(y_hat, newdata = train)
+fit2 = lm(Median_House_Value ~., data = new_data) #linear model 
+summary(fit2) #summary of coefficients
+plot(fit2) #plot res vs fitted, QQ plot, etc
+
+#test/train error 
+trainpred <- predict(fit2, train)
+testpred <- predict(fit2, test)
+
+RMSE(train$Median_House_Value, trainpred)
+RMSE(test$Median_House_Value, testpred)
+
+#check for Collinearity (source #1 lines of code 93-95)
+vif_values <- vif(fit2)
+barplot(vif_values, main = "VIF Values", col = 'yellow', ylim = c(0, 10), xlab = "predictors", ylab = "VIF Value")
+abline(h = 5.0, lwd = 3, lty = 2, col = 'red')
+```
+The summary of the Linear Regression model gives an R^2 value of 0.64, the p-value for all variables shows that they are statistically significant. adjusted R^2 value is suppose to account for over-fitting of the model. The plots show that this model breaks several assumptions like linearity. For example, the residuals vs fitted graph shows a slight non-linearity, therefore, breaking the linearity assumption for Linear Regression. We also know from the previous histograms that not all variables are distributed normally. Overall, this model is o.k but it is not the best model given all the limitations we have come across. To measure accuracy of model we considered the training RMSE = 68,516.83 and the testing RMSE = 69,073.42. This means this model had an error by about ~ $69,000 when predicting Median House Value. After gathering this data, we will analyze the rest of the models error and discuss which model does the best job answering our main question. I also think it is important to mention certain outliers in the residuals vs leverage plot, but I did not remove them because there are not too many. I also printed a VIF bar graph (Source #1) to check for multicollinearity, and the graph confirms this suspicion. Since the main predictor variables are not collinear, we continued with our analysis and addressed this issue using a Ridge Regression model later on. 
+
+**Model: Polynomial Regression **
+
+```{r, message=FALSE, warning=FALSE}
+polyfit <- lm(Median_House_Value ~(.)^2, data = train) #create polynomial by squaring terms 
+summary(polyfit)
+plot(polyfit) #residuals vs fitted slightly better but not huge improvement. 
+
+#calculate training and test RMSE 
+train_mse <- predict(polyfit, train)
+RMSE(train$Median_House_Value, train_mse)
+
+test_mse <- predict(polyfit, test)
+RMSE(test$Median_House_Value, test_mse)
+
+#Cross Validation- LOOCV (Source #5 lines 116-117)
+set.seed(100)
+
+ctrl <- trainControl(method = "LOOCV") #pick method = loocv
+modelCV <- train(Median_House_Value ~(.)^2, data = test, method = "lm", trControl = ctrl)
+summary(modelCV)
+print(modelCV)
+
+```
+The final RMSE for training data is 60,513.11 and the testing RMSE is 59,749.1. This has slightly better RMSE values than the Linear Regression model, a slightly better R^2 value of 0.72. When we analyze the entire summary, we can get a better understanding of the relationship between each predictor and the dependent variable. I tried experimenting with the degrees of this polynomial but got the best results with degree 2. I used LOOCV (Source #2 & #5) to verify the RMSE and to rule out the over-fitting claim. Using LOOCV with 6,212 samples and 13 predictors, we got an RMSE of 60,238.75, and R^2 value of 0.728 and MAE of 42,128. The R^2 was just a bit lower through cross validation, but not by much. This confirmed that the model was not over-fitting the data and that the values were similar enough. Our main goal of predicting the Y variables Median House Value was carried out, each model doing it slightly less or more accurately. The Polynomial Regression model was off by +60,513 or -60,513 in predicting home values. Given the fact that homes on this data-set vary are in the hundred thousands of dollars, being off by ~$60,000 is not too bad. 
+
+**Analysis: Random Forest**
+
+```{r, message=FALSE, warning=FALSE}
+#Random Forest Regression  (source #4 lines 131-133)
+library(ggplot2)
+library(randomForest)
+
+set.seed(500)
+rf.fit <- randomForest(Median_House_Value ~., data = train, ntree = 60, importance = TRUE)
+rf.fit
+
+```
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+#plot of variable importance based on Random Forest
+importance(rf.fit)
+
+
+
+# Get variable importance from the model fit
+#Code to format importance plot from: https://hackernoon.com/random-forest-regression-in-r-code-and-interpretation 
+#Code Source #4 lines 148-160)
+
+ImpData <- as.data.frame(importance(rf.fit))
+ImpData$Var.Names <- row.names(ImpData)
+
+ggplot(ImpData, aes(x=Var.Names, y=`%IncMSE`)) +
+  geom_segment( aes(x=Var.Names, xend= Var.Names, y=0, yend=`%IncMSE`), color="orange") +
+  geom_point(aes(size = IncNodePurity), color="blue", alpha=0.6) +
+  theme_light() +
+  coord_flip() +
+  theme(
+    legend.position="bottom",
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+```
+The Random Forest model summary mentions that the percentage of variance explained is 84%. The MSE is very high, but when I scale the data it is ~0.1. This large un-scaled number is normal given the large values we are dealing with in this data set. 
+The Random Forest Regression model printed out a summary of each predictor and ranked them by importance and node purity (source #4). Based on this model, Median Income is the most important predictor with the most node purity. Distance to the coast is another predictor that is important in predicting the dependent variable. This plot makes a lot of sense because the more money you make, the more you can spend in a home with higher monetary value. Despite the fact that this data set contains data from the 90's, it still holds very true that homes near the coast tend to be the most expensive. Some disadvantages of this model is that it takes a long time to run this model so it is slow and not as quick as other regression models. An advantage is that it provides a whole list of predictor importance in a very clear way, which is helpful for interpretation. 
+
+**Analysis: Ridge Regression**
+```{r, message=FALSE, warning=FALSE}
+#Ridge Regression Model 
+library(glmnet)
+library(plotmo)
+set.seed(1)
+
+#split data into train/test 
+index = sample(1:nrow(df), 0.7*nrow(df))
+train_ridge = df[index,] 
+test_ridge = df[-index,] 
+
+x <-model.matrix(Median_House_Value ~., train_ridge )#predictor variable matrix
+y_train <- train_ridge$Median_House_Value #response variable
+
+x_test = as.matrix(test_ridge$Median_House_Value,test_ridge) #^^^
+y_test = test_ridge$Median_House_Value
+
+ridge.mod <- glmnet(x,y_train,alpha = 0)
+summary(ridge.mod)
+
+
+#find optimal lambda k-fold cross val.
+cv_ridgemod <- cv.glmnet(x,y_train,alpha=0)
+optimal_lambda <- cv_ridgemod$lambda.min 
+optimal_lambda # = 7939.894
+
+
+plot(cv_ridgemod)
+
+#coeff of best model 
+optimal_model <- glmnet(x,y_train, alpha=0, lambda = optimal_lambda)
+coef(optimal_model)
+
+#plot 
+plot_glmnet(ridge.mod)
+
+# optimal model predictions 
+y_predict <- predict(ridge.mod, s = optimal_lambda, newx = x)
+tss <- sum((y_train - mean(y_train))^2)
+sse <- sum((y_train - y_predict)^2)
+
+#calculating R^2 value
+r_squared = 1 - sse/tss
+r_squared # = 0.631309
+
+```
+I decided to fit the Ridge Regression model to the data given the fact that collinearity was a concern. In class we learned this was a good model to compensate for this issue, so I decided to try it out and see what resulted from it. The overall R^2 of the model was 0.6313 which is about the same as the value for Linear Regression. The optimal lambda value was found using k-fold cross validation and it was found to be 7,939.894. Since I am not very familiar with this model, this value seemed a bit big but I think that it could still be reasonable given the big values we are working with in this data set. 
+The **Log Lambda vs. Coefficients** graph shows how the coefficients that do not contribute much to the predictions shrink to zero fastest by penalization. In the graph, we can see how the Household number and total_rooms coefficient is not as important for predicting Median House Value. Instead, Median Income once again is shown to be the most effective predictor for predicting our dependent variable. After that, the ridge regression model says that Latitude and Longitude also play an important role for the dependent variable prediction. 
+
+
+
+**Result Discussion**
+
+Overall, I fit the data to four different models to see which model predicted Home Value the most accurately. Some models were difficult to work with, like the Random Forest Model. It took a very long time to run on my computer, which was a challenge, and it was not efficient in terms of needing to run it many times compared to how fast the other models worked. Despite the slow algorithm, it turned out to be the model with the best R^2 value and gave a lot of insight into predictor importance. This model predicted the dependent variable was more likely to be predicted accurately through median Income and distance to the coast. The RMSE value was also the lowest across the board so the error was the best of all.  
+
+Another challenge was that it was difficult to interpret the data for the Ridge Regression model, I had to find new ways to plot it in a way that made more sense to me. The Ridge Regression model was also selected as a model because it is a good model for data that has collinearity. Since the variables that were highly correlated with each other were not 'significant' based on other models, we decided to keep them and not remove them from the data set. The cross validation used for Ridge Regression (k-fold Cross Validation) also took a long time to run and it was difficult to have to wait each time I ran my code. Despite the challenges, it did confirm Median Income as the coefficient that most affected the prediction for the dependent variable. In other words, it confirmed the importance of Median Income for our overall goal of predicting home values.
+
+The Linear Regression model was one with lower R^2, and each predictor was labeled as 'statistically significant' through evaluating p-values. The RMSE was the highest for this model so overall it was not the most successful at predicting the dependent variable compared to the rest of the models. Despite the drawbacks, it was a simple model to test and it was very fast and convenient in terms of training time. 
+
+The Polynomial Regression model sat somewhere in the middle in terms of prediction accuracy. I also used LOOCV for this model to rule out over-fitting and it was very slow. The RMSE (60,238) and R^2 (0.7) was better than Linear Regression and it did a better job with test error and overall fit. It was a decent model and the main challenge was just the cross validation part. 
+
+I think the overall goal was achieved through this analysis. Through different models, we found that Income and distance to the coast are the most important factors that affect home value in this data set. We also determined Random Forest to be the model that best predicted our dependent variable. Some limitations that we experienced as a group was not having enough people in our group. If we had more people maybe it would of been easier to get different inputs, better conversations about models and better suggestions for improvement. Another limitation was my lack of experience, so I had to resort to the book a lot and online to figure out how to properly look for multicollinearity (for example).  
+
+In the future, it would be nice to work with this same data with updated home prices. I think trying more models with less predictors would yield better results. I think it would be a good idea to continue practicing on this data set over winter break to see what changes I can make to my models for better results. I would like to explore other predictors that I did not fully analyze like the predictors classified by location. 
+  
+
+
+**Sources** 
+
+1) Li, Jingwei. “How to Check Multicollinearity Using R .” ProjectPro,       https://www.projectpro.io/recipes/check-multicollinearity-r. 
+
+2) James, Gareth, et al. ISLR2: Introduction to Statistical Learning, Second Edition. https://mran.microsoft.com/web/packages/ISLR2/ISLR2.pdf. 
+
+3) Pace, R. Kelley, and Ronald Barry. "Sparse spatial autoregressions." Statistics & Probability Letters 33.3 (1997): 291-297.
+(Original dataset) 
+
+4) O., Nikola. “Random Forest Regression in R: Code and Interpretation.” HackerNoon, 29 Dec. 2021, https://hackernoon.com/random-forest-regression-in-r-code-and-interpretation.
+
+5) Zach. “Leave-One-out Cross-Validation in R (with Examples).” Statology, 4 Nov. 2020, https://www.statology.org/leave-one-out-cross-validation-in-r/. 
+
+6) https://www.kaggle.com/datasets/fedesoriano/california-housing-prices-data-extra-features
+(exact data set I used)
+
+Group Collaborators: JiaQi Wang 
+
+ 
+
+
+
+
+
