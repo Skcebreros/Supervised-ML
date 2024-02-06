@@ -1,0 +1,358 @@
+---
+title: "Math 180 - Homework 8"
+author: "Sandy Cebreros"
+date: "October 28th, 2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Problem 1
+Analyze the `Boston` data set.
+
+```{r}
+#install.packages("ISLR2")
+library(ISLR2)
+head(Boston)
+```
+
+Investigate how the variables `dis` (the weighted mean of distances to five Boston employment centers) and `nox` (nitrogen oxides concentration in parts per 10 million) are related. You will treat `dis` as the predictor and `nox` as the response. 
+
+(a) Fit a cubic polynomial regression to predict `nox` using `dis`. Report the regression output, and plot the resulting data and polynomial fits.
+
+```{r}
+fit = lm(nox ~ poly(dis,3), data = Boston)
+summary(fit)
+x = range(Boston$dis)
+xrange = seq(from = x[1], to = x[2], length.out = 100)
+pred = predict(fit, newdata = list(dis = xrange))
+plot(Boston$dis, Boston$nox, xlab ='dis', ylab = 'nox')
+lines(xrange, pred, col = 'hot pink', lwd = 2 )
+```
+
+(b) Plot the polynomial fits for a range of different polynomial degrees (say, from 1 to 10), and report the associated residual sum of squares.
+
+```{r}
+RSS = rep(0,10)
+par(mfrow = c(5,2), mar = c(1,1,1,1))
+
+x = range(Boston$dis)
+xrange = seq(from = x[1], to = x[2], length.out = 100)
+for (i in 1:10){
+  fit = lm(nox ~ poly(dis,i), data = Boston)
+  summary(fit)
+  RSS[i] = sum((Boston$nox - predict(fit))^2)
+  pred = predict (fit, newdata = list(dis = xrange))
+  plot(Boston$dis, Boston$nox, xlab = 'dis', ylab = 'nox')
+  lines(xrange, pred, col = 'green')
+}
+
+```
+
+The RSS values are `r RSS`.
+
+(c) Perform cross-validation or another approach to select the optimal degree for the polynomial
+
+```{r}
+k = 10
+n = nrow(Boston)
+folds = sample(rep(1:k, length = n))
+degs = 1:10
+cv.errors = matrix(NA, k, length(degs), dimnames = list(NULL,paste(degs)))
+
+for (j in 1:k){
+  for (i in degs){
+    fit = lm(nox~poly(dis,i),Boston[folds!=j,])
+    pred = predict(fit, newdata = Boston[folds==j,])
+    cv.errors[j,i] = mean((Boston$nox[folds == j] - pred)^2)
+    
+  }
+}
+
+cv_errors_mean = apply(cv.errors, 2, mean)
+
+plot(degs, cv_errors_mean, type = 'l')
+
+min_cv_error = which.min(cv_errors_mean)
+
+```
+
+The polynomial that gives the minimum cross validation error is of `r as.numeric(names(min_cv_error))`.
+
+(d) Use the `bs()` function to fit a regression spline to predict `nox` using `dis`. Report the output for the fit using four degrees of freedom. Plot the resulting fit.
+
+```{r}
+library(splines)
+fit = lm(nox ~ bs(dis, df = 4), data = Boston)
+x = range(Boston$dis)
+xrange = seq(frpm = x[1], to = x[2], length.out = 100)
+pred = predict(fit, newdata = list(dis=xrange))
+plot(nox ~ dis, Boston)
+lines(xrange, pred, col = 'magenta', lwd = 2)
+
+```
+
+(e) Now fit a regression spline for a range of degrees of freedom, and plot the resulting fits and report the resulting RSS.
+
+```{r}
+RSS = rep(0,6)
+par(mfrow = c(3,2), mar = c(1,1,1,1))
+dfs = 3:8
+x = range(Boston$dis)
+xrange = seq(from = x[1], to = x[2], length.out = 100)
+for (i in 1:length(dfs)){
+  fit = lm(nox ~ bs(dis,dfs[i]), Boston)
+  pred = predict(fit, newdata = list(dis = xrange))
+  plot(nox ~ dis, Boston)
+  lines(xrange, pred, col = 'blue', lwd = 2)
+  RSS[i] = sum((Boston$nox - predict(fit))^2)
+}
+
+```
+
+The regression spline results are quite similar to those of polynomial regression lines except oscillations near the endpoints.The RSS values for the regression splines are `r RSS`.
+
+(f) Perform cross-validation or another approach in order to select the best degrees of freedom for a regression spline on this data. 
+
+```{r}
+k = 10
+n = nrow(Boston)
+folds = sample(rep(1:k, length = n))
+dfs = 3:8
+cv.errors = matrix(NA, k, length(dfs), dimnames = list(NULL,paste(dfs)))
+
+for (j in 1:k){
+  for (i in 1:length(dfs)){
+    fit = lm(nox~bs(dis,dfs[i]),Boston[folds!=j,])
+    pred = predict(fit, newdata = Boston[folds==j,])
+    cv.errors[j,i] = mean((Boston$nox[folds == j] - pred)^2)
+    
+  }
+}
+
+cv_errors_mean = apply(cv.errors, 2, mean)
+
+plot(dfs, cv_errors_mean, type = 'l')
+
+min_cv_error = which.min(cv_errors_mean)
+
+```
+
+The best degree of freedom of the regression spline for this data is `r as.numeric(names(min_cv_error))`
+
+
+## Problem 2
+In this problem you will explore backfitting in the context of multiple linear regression.
+
+Suppose that you would like to perform multiple linear regression, but you do not have software to do so. Instead, you only have software to perform simple linear regression. Therefore, you take the following iterative approach: you repeatedly hold all but one coefficient estimate fixed at its current value, and update only that coefficient estimate using a simple linear regression. The process is continued until convergence — that is, until the coefficient estimates stop changing.
+We now try this out on a toy example.
+
+(a) Generate a $n=100$ datapoint training set with a response $Y$ and two predictors $X_1$. Store $Y$, $X_1$, and $X_2$ in `y`, `x1`, and `x2`, respectively. (hint: You can, for example, choose the linear model $Y=5+2X_1-3X_2+\epsilon$ where $X_1$, $X_2$ and $\epsilon$ are independent and follow the standard normal distribution. However, any choice, linear or non-linear, will work.)
+```{r}
+set.seed(1)
+n = 100
+x1 = rnorm(n, mean= 0, sd =2) 
+x2 = rnorm(n, mean= 1, sd =1) #noise
+eps = rnorm(n)
+y = 3*x1 + x2 + eps
+```
+(b) Initialize $\hat\beta_1$ to take on a value of your choice. It does not matter
+what value you choose.
+
+```{r}
+# Your choice of beta1
+beta1 = 26 
+```
+
+(c) Keeping $\hat\beta_1$, fixed, fit the model
+\begin{equation}
+Y-\hat\beta_1 X_1 = \beta_0 + \beta_2 X_2 + \epsilon
+\end{equation}. You can do this as follows:
+```{r,eval=FALSE}
+a = y - beta1 * x1
+beta2 = lm(a~x2)$coef[2]
+```
+
+(d) Keeping $\hat\beta_2$ fixed, fit the model
+\begin{equation}
+Y -\hat\beta_2X_2 = \beta_0 + \beta_1X_1+\epsilon
+\end{equation}
+You can do this as follows:
+```{r, eval=FALSE}
+a <- y - beta2*x2
+beta1 <- lm(a~x1)$coef[2]
+```
+
+(e) Write a `for` loop to repeat (c) and (d) 100 times. Report the estimates of $\hat\beta_0$, $\hat\beta_1$, and $\hat\beta_2$ at each iteration of the `for` loop. Create a plot in which each of these values is displayed, with $\hat\beta_0$, $\hat\beta_1$, and $\hat\beta_2$ each shown in a different color. $\hat\beta_0$ is estimated by the models in (c) and (d) )
+
+```{r}
+N = 100
+beta0 = rep(0,N)
+beta1 = rep(0,N)
+beta2 = rep(0,N)  #create empty vectors
+
+# initialize beta1[1] 
+beta1[1] = 25
+
+for (i in 1:N){
+   a = y - beta1[i] * x1 
+   beta2[i] = lm(a ~x2)$coef[2]
+   b = y - beta2 *x2
+   beta1[i] <- lm(b ~x1)$coef[2]
+   beta0[i] = lm(b ~ x1)$coef[1] 
+}
+
+par(mfrow = c(1,3))
+plot(1:N,beta0,col = 'cyan',xlab = '# of iterations',
+     ylab = 'beta0 values')
+plot(1:N,beta1,col = 'red',xlab = '# of iterations',
+     ylab = 'beta1 values')
+plot(1:N,beta2,col = 'blue',xlab = '# of iterations',
+     ylab = 'beta1 values')
+```
+
+(f) Compare your answer in (e) to the results of simply performing multiple linear regression to predict $Y$ using $X_1$ and $X_2$ Use the `abline()` function to overlay those multiple linear regression coefficient estimates on the plot obtained in (e).
+
+```{r}
+fit = lm(y ~ x1+x2)
+ture_beta0 = coef(fit)[1]
+ture_beta1 = coef(fit)[2]
+ture_beta2 = coef(fit)[3]
+
+par(mfrow = c(1,3))
+plot(1:N,beta0,col = 'cyan',xlab = '# of iterations',
+     ylab = 'beta0 values')
+abline(h = ture_beta0, col = 'orange' ,lwd=2)
+plot(1:N,beta1,col = 'red',xlab = '# of iterations',
+     ylab = 'beta1 values')
+abline(h = ture_beta1, col = 'yellow' ,lwd=2)
+plot(1:N,beta2,col = 'blue',xlab = '# of iterations',
+     ylab = 'beta1 values')
+abline(h = ture_beta2, col = 'orange' ,lwd=2)
+```
+(g) On this data set, how many backfitting iterations were required in order to obtain a “good” approximation to the multiple regression coefficient estimates $\hat\beta_0$, $\hat\beta_1$, and $\hat\beta_2$? 
+
+In order to have a "good" back fitting approximation, it only takes one backfitting iteration.
+
+## Problem 3
+Now we will seek to predict `Sales` using regression trees and related approaches, treating the response as a quantitative variable.
+
+(a) Split the data set into a training set and a test set. 
+
+```{r}
+library(tree)
+library(ISLR2)
+attach(Carseats)
+
+set.seed(1)
+#split data into 0.7 & 0.3
+sample <- sample(nrow(Carseats), 0.7*nrow(Carseats))
+train_set <- Carseats[sample,]
+test_set <- Carseats[-sample,]
+```
+
+(b) Fit a regression tree to the training set. Plot the tree, and interpret the results. What test MSE do you obtain?
+```{r}
+#Fit regression tree to training set 
+tree.fit = tree(Sales ~., data= train_set)
+              
+#plot tree 
+plot(tree.fit)
+text(tree.fit, pretty=0)
+
+#MSE
+pred <- predict(tree.fit, data2 = test_set)
+test_mse = mean((pred - test_set$Sales)^2)
+
+```
+The test MSE obtained is `r test_mse`. This value is a bit high 
+
+(c) Use cross-validation in order to determine the optimal level of tree complexity. Does pruning the tree improve the test MSE?
+
+```{r}
+#cross validation 
+set.seed(7)
+cv.tree.fit <- cv.tree(tree.fit)
+plot(cv.tree.fit, type = 'b')
+
+#prune
+prune.fit <- prune.tree(tree.fit, best = 8)
+plot(prune.fit)
+text(prune.fit, pretty=0)
+
+#re-check MSE 
+pred <- predict(prune.fit, data2 = test_set)
+test_prune_mse <- mean((pred- test_set$Sales)^2)
+test_prune_mse
+
+
+```
+
+Yes, the test MSE improved. 
+
+(d) Use the bagging approach in order to analyze this data. What test MSE do you obtain? Determine which variables are most important.
+
+```{r}
+library(randomForest)
+bag.fit <- randomForest(Sales ~ ., data=train_set, importance=TRUE, ntree=500, mtry=(dim(test_set)[2]-1))
+bag.fit$importance
+importance(bag.fit)
+
+#MSE
+pred <- predict(bag.fit, newdata=test_set)
+test_mse <- ((pred - test_set$Sales)^2)
+
+```
+Price and ShelveLoc hold the most importance. 
+
+(e) Use random forests to analyze this data. What test MSE do you obtain? Determine which variables are most important. Describe the effect of `m`, the number of variables considered at each split, on the error rate obtained.
+
+```{r}
+rf.fit <- randomForest(Sales ~., data = train_set, mtry = 3, importance= TRUE) 
+
+#importance
+importance(rf.fit)
+
+pred <- predict(rf.fit, newdata = test_set)
+test_mse <- mean((pred - test_set$Sales)^2)
+test_mse
+              
+
+```
+
+(f) Now analyze the data using BART, and report your results.
+
+```{r}
+library(BART)
+library(ISLR2)
+
+set.seed(1)
+
+train = sample(1:nrow(Carseats), nrow(Carseats)/2)
+
+x = Carseats[,2:11]
+y = Carseats[, 'Sales']
+xtrain = x[train,]
+ytrain = y[train]
+xtest= x[-train,]
+ytest = y[-train]
+
+set.seed(1)
+bartfit = gbart(xtrain,ytrain,x.test = xtest)
+yhat.bart <- bartfit$yhat.test.mean
+testMse = mean((ytest - yhat.bart)^2)
+testMse
+```
+
+The lowest MSE is obtained using BART. The MSE is `r testMse`. 
+
+
+
+
+
+
+
+
