@@ -1,0 +1,145 @@
+---
+title: "Boston: Regression"
+author: "Sandy Cebreros"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Problem 1
+In this problem, you will analyze the `Boston` data set. 
+
+```{r}
+#install.packages("ISLR2")
+library(ISLR2)
+head(Boston)
+```
+
+Investigate how the variables `dis` (the weighted mean of distances to five Boston employment centers) and `nox` (nitrogen oxides concentration in parts per 10 million) are related. You will treat `dis` as the predictor and `nox` as the response. 
+
+(a) Fit a cubic polynomial regression to predict `nox` using `dis`. Report the regression output, and plot the resulting data and polynomial fits.
+
+```{r}
+fit = lm(nox ~ poly(dis,3), data = Boston)
+summary(fit)
+x = range(Boston$dis)
+xrange = seq(from = x[1], to = x[2], length.out = 100)
+pred = predict(fit, newdata = list(dis = xrange))
+plot(Boston$dis, Boston$nox, xlab ='dis', ylab = 'nox')
+lines(xrange, pred, col = 'hot pink', lwd = 2 )
+```
+
+(b) Plot the polynomial fits for a range of different polynomial degrees (say, from 1 to 10), and report the associated residual sum of squares.
+
+```{r}
+RSS = rep(0,10)
+par(mfrow = c(5,2), mar = c(1,1,1,1))
+
+x = range(Boston$dis)
+xrange = seq(from = x[1], to = x[2], length.out = 100)
+for (i in 1:10){
+  fit = lm(nox ~ poly(dis,i), data = Boston)
+  summary(fit)
+  RSS[i] = sum((Boston$nox - predict(fit))^2)
+  pred = predict (fit, newdata = list(dis = xrange))
+  plot(Boston$dis, Boston$nox, xlab = 'dis', ylab = 'nox')
+  lines(xrange, pred, col = 'green')
+}
+
+```
+
+The RSS values are `r RSS`.
+
+(c) Perform cross-validation or another approach to select the optimal degree for the polynomial
+
+```{r}
+k = 10
+n = nrow(Boston)
+folds = sample(rep(1:k, length = n))
+degs = 1:10
+cv.errors = matrix(NA, k, length(degs), dimnames = list(NULL,paste(degs)))
+
+for (j in 1:k){
+  for (i in degs){
+    fit = lm(nox~poly(dis,i),Boston[folds!=j,])
+    pred = predict(fit, newdata = Boston[folds==j,])
+    cv.errors[j,i] = mean((Boston$nox[folds == j] - pred)^2)
+    
+  }
+}
+
+cv_errors_mean = apply(cv.errors, 2, mean)
+
+plot(degs, cv_errors_mean, type = 'l')
+
+min_cv_error = which.min(cv_errors_mean)
+
+```
+
+The polynomial that gives the minimum cross validation error is of `r as.numeric(names(min_cv_error))`.
+
+(d) Fit a regression spline to predict `nox` using `dis`. Report the output for the fit using four degrees of freedom. Plot the resulting fit.
+
+```{r}
+library(splines)
+fit = lm(nox ~ bs(dis, df = 4), data = Boston)
+x = range(Boston$dis)
+xrange = seq(frpm = x[1], to = x[2], length.out = 100)
+pred = predict(fit, newdata = list(dis=xrange))
+plot(nox ~ dis, Boston)
+lines(xrange, pred, col = 'magenta', lwd = 2)
+
+```
+
+(e) Now fit a regression spline for a range of degrees of freedom, and plot the resulting fits and report the resulting RSS. 
+
+```{r}
+RSS = rep(0,6)
+par(mfrow = c(3,2), mar = c(1,1,1,1))
+dfs = 3:8
+x = range(Boston$dis)
+xrange = seq(from = x[1], to = x[2], length.out = 100)
+for (i in 1:length(dfs)){
+  fit = lm(nox ~ bs(dis,dfs[i]), Boston)
+  pred = predict(fit, newdata = list(dis = xrange))
+  plot(nox ~ dis, Boston)
+  lines(xrange, pred, col = 'blue', lwd = 2)
+  RSS[i] = sum((Boston$nox - predict(fit))^2)
+}
+
+```
+
+The regression spline results are quite similar to those of polynomial regression lines except oscillations near the endpoints.The RSS values for the regression splines are `r RSS`.
+
+(f) Perform cross-validation or another approach in order to select the best degrees of freedom for a regression spline on this data.
+
+```{r}
+k = 10
+n = nrow(Boston)
+folds = sample(rep(1:k, length = n))
+dfs = 3:8
+cv.errors = matrix(NA, k, length(dfs), dimnames = list(NULL,paste(dfs)))
+
+for (j in 1:k){
+  for (i in 1:length(dfs)){
+    fit = lm(nox~bs(dis,dfs[i]),Boston[folds!=j,])
+    pred = predict(fit, newdata = Boston[folds==j,])
+    cv.errors[j,i] = mean((Boston$nox[folds == j] - pred)^2)
+    
+  }
+}
+
+cv_errors_mean = apply(cv.errors, 2, mean)
+
+plot(dfs, cv_errors_mean, type = 'l')
+
+min_cv_error = which.min(cv_errors_mean)
+
+```
+
+The best degree of freedom of the regression spline for this data is `r as.numeric(names(min_cv_error))`
+
+

@@ -1,0 +1,124 @@
+---
+title: "Carseats"
+author: "Sandy Cebreros"
+output: html_document
+---
+
+A classification tree was applied to the `Carseats` data set after converting `Sales` into a qualitative response variable. Predict `Sales` using regression trees and related approaches, treating the response as a quantitative variable.
+
+(a) Split the data set into a training set and a test set. 
+
+```{r}
+library(tree)
+library(ISLR2)
+attach(Carseats)
+
+set.seed(1)
+#split data into 0.7 & 0.3
+sample <- sample(nrow(Carseats), 0.7*nrow(Carseats))
+train_set <- Carseats[sample,]
+test_set <- Carseats[-sample,]
+```
+
+(b) Fit a regression tree to the training set and plot. What is the test MSE ?
+```{r}
+#Fit regression tree to training set 
+tree.fit = tree(Sales ~., data= train_set)
+              
+#plot tree 
+plot(tree.fit)
+text(tree.fit, pretty=0)
+
+#MSE
+pred <- predict(tree.fit, data2 = test_set)
+test_mse = mean((pred - test_set$Sales)^2)
+
+```
+The test MSE obtained is `r test_mse`. This value is a bit high 
+
+(c) Cross validate in order to determine the optimal level of tree complexity. Does pruning the tree improve the test MSE?
+
+```{r}
+#cross validation 
+set.seed(7)
+cv.tree.fit <- cv.tree(tree.fit)
+plot(cv.tree.fit, type = 'b')
+
+#prune
+prune.fit <- prune.tree(tree.fit, best = 8)
+plot(prune.fit)
+text(prune.fit, pretty=0)
+
+#re-check MSE 
+pred <- predict(prune.fit, data2 = test_set)
+test_prune_mse <- mean((pred- test_set$Sales)^2)
+test_prune_mse
+
+
+```
+
+Yes, the test MSE improved. 
+
+(d) Now use bagging, What test MSE do you obtain? Determine which variables are most important.
+
+```{r}
+library(randomForest)
+bag.fit <- randomForest(Sales ~ ., data=train_set, importance=TRUE, ntree=500, mtry=(dim(test_set)[2]-1))
+bag.fit$importance
+importance(bag.fit)
+
+#MSE
+pred <- predict(bag.fit, newdata=test_set)
+test_mse <- ((pred - test_set$Sales)^2)
+
+```
+Price and ShelveLoc hold the most importance. 
+
+(e) Now use Random Forest . What test MSE do you obtain? Determine which variables are most important. 
+
+```{r}
+rf.fit <- randomForest(Sales ~., data = train_set, mtry = 3, importance= TRUE) 
+
+#importance
+importance(rf.fit)
+
+pred <- predict(rf.fit, newdata = test_set)
+test_mse <- mean((pred - test_set$Sales)^2)
+test_mse
+              
+
+```
+
+(f) Now analyze the data using BART, and report your results.
+
+```{r}
+library(BART)
+library(ISLR2)
+
+set.seed(1)
+
+train = sample(1:nrow(Carseats), nrow(Carseats)/2)
+
+x = Carseats[,2:11]
+y = Carseats[, 'Sales']
+xtrain = x[train,]
+ytrain = y[train]
+xtest= x[-train,]
+ytest = y[-train]
+
+set.seed(1)
+bartfit = gbart(xtrain,ytrain,x.test = xtest)
+yhat.bart <- bartfit$yhat.test.mean
+testMse = mean((ytest - yhat.bart)^2)
+testMse
+```
+
+The lowest MSE is obtained using BART. The MSE is `r testMse`. 
+
+
+
+
+
+
+
+
